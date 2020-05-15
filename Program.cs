@@ -1,48 +1,67 @@
-﻿using System;
+using System;
 using System.Windows.Automation;
 using System.Diagnostics;
 using System.Windows;
 using System.IO;
-using System.Collections;
+using System.Collections.Generic;
+using Newtonsoft.Json;
 
 class Program
 {
-    static Hashtable ProgramTargetRects = new Hashtable {
-        { @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe", new Rect(-7,0,1293,1407)},
-        { @"C:\Program Files (x86)\Battle.net\Battle.net.exe", new Rect(1280,700,1280,700)},
-    };
+    static Dictionary<string, Rect> ProgramTargetRects = new Dictionary<string, Rect>();
     static string LogLocation = System.IO.Path.Combine(
         System.IO.Path.GetDirectoryName(
             System.Reflection.Assembly.GetExecutingAssembly().Location
         ),
         "log.txt"
         );
+    static string WindowPositionsJsonLocation = System.IO.Path.Combine(
+        System.IO.Path.GetDirectoryName(
+            System.Reflection.Assembly.GetExecutingAssembly().Location
+        ),
+        "window_positions.json"
+        );
 
     [STAThread]
     public static void Main(string[] args)
     {
         Log($"Log location {LogLocation}");
-        Automation.AddAutomationEventHandler(
-            WindowPattern.WindowOpenedEvent,
-            AutomationElement.RootElement,
-            TreeScope.Children,
-            (sender, e) => { HandleWindow(sender); });
+        try {
+            Log($"Reading config from {WindowPositionsJsonLocation}");
+            ReadRects(WindowPositionsJsonLocation);
+            Log($"Done reading config");
 
-        foreach (var child in AutomationElement.RootElement.FindAll(TreeScope.Children, System.Windows.Automation.Condition.TrueCondition))
-        {
-            HandleWindow(child);
-        }
+            Automation.AddAutomationEventHandler(
+                WindowPattern.WindowOpenedEvent,
+                AutomationElement.RootElement,
+                TreeScope.Children,
+                (sender, e) => { HandleWindow(sender); });
 
-        Log("Listening for windows...");
+            foreach (var child in AutomationElement.RootElement.FindAll(
+                TreeScope.Children,
+                System.Windows.Automation.Condition.TrueCondition))
+            {
+                HandleWindow(child);
+            }
+
+            Log("Listening for windows...");
 #if DEBUG
-        Console.ReadLine();
+            Log("In Debug mode");
+            Console.ReadLine();
 #else
-        System.Windows.Forms.Application.EnableVisualStyles();
-        System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
-        System.Windows.Forms.Application.Run(new TrayIconForm());
+            Log("In Release mode");
+            System.Windows.Forms.Application.EnableVisualStyles();
+            System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+            System.Windows.Forms.Application.Run(new TrayIconForm());
 #endif
 
-        Automation.RemoveAllEventHandlers();
+            Automation.RemoveAllEventHandlers();
+        }
+        catch (Exception e)
+        {
+            Log($"ERROR: {e}");
+        }
+        Log("Exiting");
     }
 
     private static void Log(string msg) {
@@ -52,6 +71,18 @@ class Program
 #if DEBUG
         Console.WriteLine(msg);
 #endif
+    }
+
+    private static void ReadRects(string location)
+    {
+        var rectsText = File.ReadAllText(WindowPositionsJsonLocation);
+        var rawRects = JsonConvert.DeserializeObject<Dictionary<string, List<int>>>(rectsText);
+
+        foreach(KeyValuePair<string, List<int>> entry in rawRects)
+        {
+            var rect = new Rect(entry.Value[0], entry.Value[1], entry.Value[2], entry.Value[3]);
+            ProgramTargetRects.Add(entry.Key, rect);
+        }
     }
 
     private static void HandleWindow(object src)
@@ -64,7 +95,7 @@ class Program
             // Don't have a pattern or the window isn't idling.
             return;
         }
-        
+
 #if DEBUG
         RegisterForEvents(
             element, WindowPattern.Pattern, TreeScope.Element);
@@ -112,10 +143,10 @@ class Program
     {
         if (ap.Id == WindowPattern.Pattern.Id)
         {
-            // The WindowPattern Exposes an element's ability 
+            // The WindowPattern Exposes an element's ability
             // to change its on-screen position or size.
 
-            // Define an AutomationPropertyChangedEventHandler delegate to 
+            // Define an AutomationPropertyChangedEventHandler delegate to
             // listen for window moved events.
             var moveHandler =
                 new AutomationPropertyChangedEventHandler(OnWindowMove);
