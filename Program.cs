@@ -115,7 +115,7 @@ class Program
         }
 
         var targetRect = (Rect)ProgramTargetRects[processFile];
-        Log($"Handling window: {processFile} ({targetRect})");
+        Log($"Handling window: {processFile} ({element.Current.BoundingRectangle} -> {targetRect})");
 
         var transformPattern = GetControlPattern(element, TransformPattern.Pattern) as TransformPattern;
         if (transformPattern != null && transformPattern.Current.CanMove && transformPattern.Current.CanResize)
